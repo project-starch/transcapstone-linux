@@ -33,15 +33,8 @@
 
 struct kernel_mapping kernel_map __ro_after_init;
 EXPORT_SYMBOL(kernel_map);
-#ifdef CONFIG_XIP_KERNEL
-#define kernel_map	(*(struct kernel_mapping *)XIP_FIXUP(&kernel_map))
-#endif
 
-#ifdef CONFIG_64BIT
 u64 satp_mode __ro_after_init = !IS_ENABLED(CONFIG_XIP_KERNEL) ? SATP_MODE_57 : SATP_MODE_39;
-#else
-u64 satp_mode __ro_after_init = SATP_MODE_32;
-#endif
 EXPORT_SYMBOL(satp_mode);
 
 bool pgtable_l4_enabled = IS_ENABLED(CONFIG_64BIT) && !IS_ENABLED(CONFIG_XIP_KERNEL);
@@ -100,15 +93,11 @@ static inline void print_mlg(char *name, unsigned long b, unsigned long t)
 		   (((t) - (b)) >> LOG2_SZ_1G));
 }
 
-#ifdef CONFIG_64BIT
 static inline void print_mlt(char *name, unsigned long b, unsigned long t)
 {
 	pr_notice("%12s : 0x%08lx - 0x%08lx   (%4ld TB)\n", name, b, t,
 		   (((t) - (b)) >> LOG2_SZ_1T));
 }
-#else
-#define print_mlt(n, b, t) do {} while (0)
-#endif
 
 static inline void print_ml(char *name, unsigned long b, unsigned long t)
 {
@@ -135,17 +124,11 @@ static void __init print_vm_layout(void)
 		(unsigned long)VMEMMAP_END);
 	print_ml("vmalloc", (unsigned long)VMALLOC_START,
 		(unsigned long)VMALLOC_END);
-#ifdef CONFIG_64BIT
 	print_ml("modules", (unsigned long)MODULES_VADDR,
 		(unsigned long)MODULES_END);
-#endif
 	print_ml("lowmem", (unsigned long)PAGE_OFFSET,
 		(unsigned long)high_memory);
 	if (IS_ENABLED(CONFIG_64BIT)) {
-#ifdef CONFIG_KASAN
-		print_ml("kasan", KASAN_SHADOW_START, KASAN_SHADOW_END);
-#endif
-
 		print_ml("kernel", (unsigned long)KERNEL_LINK_ADDR,
 			 (unsigned long)ADDRESS_SPACE_END);
 	}
@@ -268,7 +251,6 @@ static void __init setup_bootmem(void)
 	memblock_allow_resize();
 }
 
-#ifdef CONFIG_MMU
 struct pt_alloc_ops pt_ops __initdata;
 
 unsigned long riscv_pfn_base __ro_after_init;
@@ -282,14 +264,6 @@ pgd_t early_pg_dir[PTRS_PER_PGD] __initdata __aligned(PAGE_SIZE);
 static p4d_t __maybe_unused early_dtb_p4d[PTRS_PER_P4D] __initdata __aligned(PAGE_SIZE);
 static pud_t __maybe_unused early_dtb_pud[PTRS_PER_PUD] __initdata __aligned(PAGE_SIZE);
 static pmd_t __maybe_unused early_dtb_pmd[PTRS_PER_PMD] __initdata __aligned(PAGE_SIZE);
-
-#ifdef CONFIG_XIP_KERNEL
-#define pt_ops			(*(struct pt_alloc_ops *)XIP_FIXUP(&pt_ops))
-#define riscv_pfn_base         (*(unsigned long  *)XIP_FIXUP(&riscv_pfn_base))
-#define trampoline_pg_dir      ((pgd_t *)XIP_FIXUP(trampoline_pg_dir))
-#define fixmap_pte             ((pte_t *)XIP_FIXUP(fixmap_pte))
-#define early_pg_dir           ((pgd_t *)XIP_FIXUP(early_pg_dir))
-#endif /* CONFIG_XIP_KERNEL */
 
 static const pgprot_t protection_map[16] = {
 	[VM_NONE]					= PAGE_NONE,
@@ -379,37 +353,17 @@ static void __init create_pte_mapping(pte_t *ptep,
 		ptep[pte_idx] = pfn_pte(PFN_DOWN(pa), prot);
 }
 
-#ifndef __PAGETABLE_PMD_FOLDED
-
 static pmd_t trampoline_pmd[PTRS_PER_PMD] __page_aligned_bss;
 static pmd_t fixmap_pmd[PTRS_PER_PMD] __page_aligned_bss;
 static pmd_t early_pmd[PTRS_PER_PMD] __initdata __aligned(PAGE_SIZE);
-
-#ifdef CONFIG_XIP_KERNEL
-#define trampoline_pmd ((pmd_t *)XIP_FIXUP(trampoline_pmd))
-#define fixmap_pmd     ((pmd_t *)XIP_FIXUP(fixmap_pmd))
-#define early_pmd      ((pmd_t *)XIP_FIXUP(early_pmd))
-#endif /* CONFIG_XIP_KERNEL */
 
 static p4d_t trampoline_p4d[PTRS_PER_P4D] __page_aligned_bss;
 static p4d_t fixmap_p4d[PTRS_PER_P4D] __page_aligned_bss;
 static p4d_t early_p4d[PTRS_PER_P4D] __initdata __aligned(PAGE_SIZE);
 
-#ifdef CONFIG_XIP_KERNEL
-#define trampoline_p4d ((p4d_t *)XIP_FIXUP(trampoline_p4d))
-#define fixmap_p4d     ((p4d_t *)XIP_FIXUP(fixmap_p4d))
-#define early_p4d      ((p4d_t *)XIP_FIXUP(early_p4d))
-#endif /* CONFIG_XIP_KERNEL */
-
 static pud_t trampoline_pud[PTRS_PER_PUD] __page_aligned_bss;
 static pud_t fixmap_pud[PTRS_PER_PUD] __page_aligned_bss;
 static pud_t early_pud[PTRS_PER_PUD] __initdata __aligned(PAGE_SIZE);
-
-#ifdef CONFIG_XIP_KERNEL
-#define trampoline_pud ((pud_t *)XIP_FIXUP(trampoline_pud))
-#define fixmap_pud     ((pud_t *)XIP_FIXUP(fixmap_pud))
-#define early_pud      ((pud_t *)XIP_FIXUP(early_pud))
-#endif /* CONFIG_XIP_KERNEL */
 
 static pmd_t *__init get_pmd_virt_early(phys_addr_t pa)
 {
@@ -629,18 +583,6 @@ static void __init create_p4d_mapping(p4d_t *p4dp,
 #define early_dtb_pgd_next	(pgtable_l5_enabled ?			\
 		(uintptr_t)early_dtb_p4d : (pgtable_l4_enabled ?	\
 		(uintptr_t)early_dtb_pud : (uintptr_t)early_dtb_pmd))
-#else
-#define pgd_next_t		pte_t
-#define alloc_pgd_next(__va)	pt_ops.alloc_pte(__va)
-#define get_pgd_next_virt(__pa)	pt_ops.get_pte_virt(__pa)
-#define create_pgd_next_mapping(__nextp, __va, __pa, __sz, __prot)	\
-	create_pte_mapping(__nextp, __va, __pa, __sz, __prot)
-#define fixmap_pgd_next		((uintptr_t)fixmap_pte)
-#define early_dtb_pgd_next	((uintptr_t)early_dtb_pmd)
-#define create_p4d_mapping(__pmdp, __va, __pa, __sz, __prot) do {} while(0)
-#define create_pud_mapping(__pmdp, __va, __pa, __sz, __prot) do {} while(0)
-#define create_pmd_mapping(__pmdp, __va, __pa, __sz, __prot) do {} while(0)
-#endif /* __PAGETABLE_PMD_FOLDED */
 
 void __init create_pgd_mapping(pgd_t *pgdp,
 				      uintptr_t va, phys_addr_t pa,
@@ -678,22 +620,6 @@ static uintptr_t __init best_map_size(phys_addr_t base, phys_addr_t size)
 	return PMD_SIZE;
 }
 
-#ifdef CONFIG_XIP_KERNEL
-#define phys_ram_base  (*(phys_addr_t *)XIP_FIXUP(&phys_ram_base))
-extern char _xiprom[], _exiprom[], __data_loc;
-
-/* called from head.S with MMU off */
-asmlinkage void __init __copy_data(void)
-{
-	void *from = (void *)(&__data_loc);
-	void *to = (void *)CONFIG_PHYS_RAM_BASE;
-	size_t sz = (size_t)((uintptr_t)(&_end) - (uintptr_t)(&_sdata));
-
-	memcpy(to, from, sz);
-}
-#endif
-
-#ifdef CONFIG_STRICT_KERNEL_RWX
 static __init pgprot_t pgprot_from_va(uintptr_t va)
 {
 	if (is_va_kernel_text(va))
@@ -720,17 +646,7 @@ void mark_rodata_ro(void)
 
 	debug_checkwx();
 }
-#else
-static __init pgprot_t pgprot_from_va(uintptr_t va)
-{
-	if (IS_ENABLED(CONFIG_64BIT) && !is_kernel_mapping(va))
-		return PAGE_KERNEL;
 
-	return PAGE_KERNEL_EXEC;
-}
-#endif /* CONFIG_STRICT_KERNEL_RWX */
-
-#if defined(CONFIG_64BIT) && !defined(CONFIG_XIP_KERNEL)
 static void __init disable_pgtable_l5(void)
 {
 	pgtable_l5_enabled = false;
@@ -799,7 +715,6 @@ retry:
 	memset(early_pud, 0, PAGE_SIZE);
 	memset(early_pmd, 0, PAGE_SIZE);
 }
-#endif
 
 /*
  * setup_vm() is called from head.S with MMU-off.
@@ -819,27 +734,6 @@ retry:
 #error "setup_vm() is called from head.S before relocate so it should not use absolute addressing."
 #endif
 
-#ifdef CONFIG_XIP_KERNEL
-static void __init create_kernel_page_table(pgd_t *pgdir,
-					    __always_unused bool early)
-{
-	uintptr_t va, end_va;
-
-	/* Map the flash resident part */
-	end_va = kernel_map.virt_addr + kernel_map.xiprom_sz;
-	for (va = kernel_map.virt_addr; va < end_va; va += PMD_SIZE)
-		create_pgd_mapping(pgdir, va,
-				   kernel_map.xiprom + (va - kernel_map.virt_addr),
-				   PMD_SIZE, PAGE_KERNEL_EXEC);
-
-	/* Map the data in RAM */
-	end_va = kernel_map.virt_addr + XIP_OFFSET + kernel_map.size;
-	for (va = kernel_map.virt_addr + XIP_OFFSET; va < end_va; va += PMD_SIZE)
-		create_pgd_mapping(pgdir, va,
-				   kernel_map.phys_addr + (va - (kernel_map.virt_addr + XIP_OFFSET)),
-				   PMD_SIZE, PAGE_KERNEL);
-}
-#else
 static void __init create_kernel_page_table(pgd_t *pgdir, bool early)
 {
 	uintptr_t va, end_va;
@@ -852,7 +746,6 @@ static void __init create_kernel_page_table(pgd_t *pgdir, bool early)
 				   early ?
 					PAGE_KERNEL_EXEC : pgprot_from_va(va));
 }
-#endif
 
 /*
  * Setup a 4MB mapping that encompasses the device tree: for 64-bit kernel,
@@ -906,14 +799,12 @@ static void __init pt_ops_set_early(void)
 {
 	pt_ops.alloc_pte = alloc_pte_early;
 	pt_ops.get_pte_virt = get_pte_virt_early;
-#ifndef __PAGETABLE_PMD_FOLDED
 	pt_ops.alloc_pmd = alloc_pmd_early;
 	pt_ops.get_pmd_virt = get_pmd_virt_early;
 	pt_ops.alloc_pud = alloc_pud_early;
 	pt_ops.get_pud_virt = get_pud_virt_early;
 	pt_ops.alloc_p4d = alloc_p4d_early;
 	pt_ops.get_p4d_virt = get_p4d_virt_early;
-#endif
 }
 
 /*
@@ -928,14 +819,12 @@ static void __init pt_ops_set_fixmap(void)
 {
 	pt_ops.alloc_pte = kernel_mapping_pa_to_va((uintptr_t)alloc_pte_fixmap);
 	pt_ops.get_pte_virt = kernel_mapping_pa_to_va((uintptr_t)get_pte_virt_fixmap);
-#ifndef __PAGETABLE_PMD_FOLDED
 	pt_ops.alloc_pmd = kernel_mapping_pa_to_va((uintptr_t)alloc_pmd_fixmap);
 	pt_ops.get_pmd_virt = kernel_mapping_pa_to_va((uintptr_t)get_pmd_virt_fixmap);
 	pt_ops.alloc_pud = kernel_mapping_pa_to_va((uintptr_t)alloc_pud_fixmap);
 	pt_ops.get_pud_virt = kernel_mapping_pa_to_va((uintptr_t)get_pud_virt_fixmap);
 	pt_ops.alloc_p4d = kernel_mapping_pa_to_va((uintptr_t)alloc_p4d_fixmap);
 	pt_ops.get_p4d_virt = kernel_mapping_pa_to_va((uintptr_t)get_p4d_virt_fixmap);
-#endif
 }
 
 /*
@@ -946,14 +835,12 @@ static void __init pt_ops_set_late(void)
 {
 	pt_ops.alloc_pte = alloc_pte_late;
 	pt_ops.get_pte_virt = get_pte_virt_late;
-#ifndef __PAGETABLE_PMD_FOLDED
 	pt_ops.alloc_pmd = alloc_pmd_late;
 	pt_ops.get_pmd_virt = get_pmd_virt_late;
 	pt_ops.alloc_pud = alloc_pud_late;
 	pt_ops.get_pud_virt = get_pud_virt_late;
 	pt_ops.alloc_p4d = alloc_p4d_late;
 	pt_ops.get_p4d_virt = get_p4d_virt_late;
-#endif
 }
 
 asmlinkage void __init setup_vm(uintptr_t dtb_pa)
@@ -963,23 +850,10 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	kernel_map.virt_addr = KERNEL_LINK_ADDR;
 	kernel_map.page_offset = _AC(CONFIG_PAGE_OFFSET, UL);
 
-#ifdef CONFIG_XIP_KERNEL
-	kernel_map.xiprom = (uintptr_t)CONFIG_XIP_PHYS_ADDR;
-	kernel_map.xiprom_sz = (uintptr_t)(&_exiprom) - (uintptr_t)(&_xiprom);
-
-	phys_ram_base = CONFIG_PHYS_RAM_BASE;
-	kernel_map.phys_addr = (uintptr_t)CONFIG_PHYS_RAM_BASE;
-	kernel_map.size = (uintptr_t)(&_end) - (uintptr_t)(&_sdata);
-
-	kernel_map.va_kernel_xip_pa_offset = kernel_map.virt_addr - kernel_map.xiprom;
-#else
 	kernel_map.phys_addr = (uintptr_t)(&_start);
 	kernel_map.size = (uintptr_t)(&_end) - kernel_map.phys_addr;
-#endif
 
-#if defined(CONFIG_64BIT) && !defined(CONFIG_XIP_KERNEL)
 	set_satp_mode();
-#endif
 
 	kernel_map.va_pa_offset = PAGE_OFFSET - kernel_map.phys_addr;
 	kernel_map.va_kernel_pa_offset = kernel_map.virt_addr - kernel_map.phys_addr;
@@ -998,13 +872,11 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	BUG_ON((PAGE_OFFSET % PGDIR_SIZE) != 0);
 	BUG_ON((kernel_map.phys_addr % PMD_SIZE) != 0);
 
-#ifdef CONFIG_64BIT
 	/*
 	 * The last 4K bytes of the addressable memory can not be mapped because
 	 * of IS_ERR_VALUE macro.
 	 */
 	BUG_ON((kernel_map.virt_addr + kernel_map.size) > ADDRESS_SPACE_END - SZ_4K);
-#endif
 
 	apply_early_boot_alternatives();
 	pt_ops_set_early();
@@ -1013,7 +885,6 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	create_pgd_mapping(early_pg_dir, FIXADDR_START,
 			   fixmap_pgd_next, PGDIR_SIZE, PAGE_TABLE);
 
-#ifndef __PAGETABLE_PMD_FOLDED
 	/* Setup fixmap P4D and PUD */
 	if (pgtable_l5_enabled)
 		create_p4d_mapping(fixmap_p4d, FIXADDR_START,
@@ -1033,18 +904,8 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	if (pgtable_l4_enabled)
 		create_pud_mapping(trampoline_pud, kernel_map.virt_addr,
 				   (uintptr_t)trampoline_pmd, PUD_SIZE, PAGE_TABLE);
-#ifdef CONFIG_XIP_KERNEL
-	create_pmd_mapping(trampoline_pmd, kernel_map.virt_addr,
-			   kernel_map.xiprom, PMD_SIZE, PAGE_KERNEL_EXEC);
-#else
 	create_pmd_mapping(trampoline_pmd, kernel_map.virt_addr,
 			   kernel_map.phys_addr, PMD_SIZE, PAGE_KERNEL_EXEC);
-#endif
-#else
-	/* Setup trampoline PGD */
-	create_pgd_mapping(trampoline_pg_dir, kernel_map.virt_addr,
-			   kernel_map.phys_addr, PGDIR_SIZE, PAGE_KERNEL_EXEC);
-#endif
 
 	/*
 	 * Setup early PGD covering entire kernel which will allow
@@ -1063,7 +924,6 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	BUG_ON((__fix_to_virt(FIX_BTMAP_BEGIN) >> PMD_SHIFT)
 		     != (__fix_to_virt(FIX_BTMAP_END) >> PMD_SHIFT));
 
-#ifndef __PAGETABLE_PMD_FOLDED
 	/*
 	 * Early ioremap fixmap is already created as it lies within first 2MB
 	 * of fixmap region. We always map PMD_SIZE. Thus, both FIX_BTMAP_END
@@ -1084,7 +944,6 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 		pr_warn("FIX_BTMAP_END:       %d\n", FIX_BTMAP_END);
 		pr_warn("FIX_BTMAP_BEGIN:     %d\n", FIX_BTMAP_BEGIN);
 	}
-#endif
 
 	pt_ops_set_fixmap();
 }
@@ -1123,10 +982,6 @@ static void __init setup_vm_final(void)
 	if (IS_ENABLED(CONFIG_64BIT))
 		create_kernel_page_table(swapper_pg_dir, false);
 
-#ifdef CONFIG_KASAN
-	kasan_swapper_init();
-#endif
-
 	/* Clear fixmap PTE and PMD mappings */
 	clear_fixmap(FIX_PTE);
 	clear_fixmap(FIX_PMD);
@@ -1139,17 +994,6 @@ static void __init setup_vm_final(void)
 
 	pt_ops_set_late();
 }
-#else
-asmlinkage void __init setup_vm(uintptr_t dtb_pa)
-{
-	dtb_early_va = (void *)dtb_pa;
-	dtb_early_pa = dtb_pa;
-}
-
-static inline void setup_vm_final(void)
-{
-}
-#endif /* CONFIG_MMU */
 
 /*
  * reserve_crashkernel() - reserves memory for crash kernel
@@ -1234,11 +1078,3 @@ void __init misc_mem_init(void)
 	reserve_crashkernel();
 	memblock_dump_all();
 }
-
-#ifdef CONFIG_SPARSEMEM_VMEMMAP
-int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
-			       struct vmem_altmap *altmap)
-{
-	return vmemmap_populate_basepages(start, end, node, NULL);
-}
-#endif
